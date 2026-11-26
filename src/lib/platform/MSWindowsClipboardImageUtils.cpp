@@ -81,7 +81,7 @@ bool create_factory(ComPtr<IWICImagingFactory>& factory)
 bool memory_stream(IWICImagingFactory* factory, const void* data, std::size_t size,
                    ComPtr<IWICStream>& stream)
 {
-    if (size > std::numeric_limits<DWORD>::max()) {
+    if (size > (std::numeric_limits<DWORD>::max)()) {
         return false;
     }
     if (FAILED(factory->CreateStream(&stream))) {
