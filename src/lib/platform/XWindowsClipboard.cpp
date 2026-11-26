@@ -27,6 +27,7 @@
 #include "platform/XWindowsClipboardPNGConverter.h"
 #include "platform/XWindowsClipboardTIFConverter.h"
 #include "platform/XWindowsClipboardWEBPConverter.h"
+#include "platform/XWindowsClipboardFilesConverter.h"
 #include "platform/XWindowsUtil.h"
 #include "mt/Thread.h"
 #include "arch/Arch.h"
@@ -86,6 +87,15 @@ XWindowsClipboard::XWindowsClipboard(IXWindowsImpl* impl, Display* display,
     }
 
     // add converters, most desired first
+    if (m_id == kClipboardClipboard) {
+        // copied files are only shared through the regular clipboard, not
+        // through the primary selection
+        m_converters.push_back(new XWindowsClipboardFilesConverter(m_display,
+                    "x-special/gnome-copied-files",
+                    XWindowsClipboardFilesConverter::Style::GnomeCopiedFiles));
+        m_converters.push_back(new XWindowsClipboardFilesConverter(m_display,
+                    "text/uri-list", XWindowsClipboardFilesConverter::Style::UriList));
+    }
     m_converters.push_back(new XWindowsClipboardPNGConverter(m_display));
     m_converters.push_back(new XWindowsClipboardWEBPConverter(m_display));
     m_converters.push_back(new XWindowsClipboardJPGConverter(m_display));
@@ -578,9 +588,10 @@ XWindowsClipboard::icccmFillCache()
              continue;
         }
 
-        if (!converter->toIClipboard(targetData).empty()) {
+        std::string converted = converter->toIClipboard(targetData);
+        if (!converted.empty()) {
             // add to clipboard and note we've done it
-            m_data[format]  = converter->toIClipboard(targetData);
+            m_data[format]  = std::move(converted);
             m_added[format] = true;
             LOG_DEBUG("  added format %d for target %s (%zu %s)", format, XWindowsUtil::atomToString(m_display, target).c_str(), targetData.size(), targetData.size() == 1 ? "byte" : "bytes");
         } else {
@@ -838,9 +849,10 @@ XWindowsClipboard::motifFillCache()
             continue;
         }
 
-        if (!converter->toIClipboard(targetData).empty()) {
+        std::string converted = converter->toIClipboard(targetData);
+        if (!converted.empty()) {
             // add to clipboard and note we've done it
-            m_data[format]  = converter->toIClipboard(targetData);
+            m_data[format]  = std::move(converted);
             m_added[format] = true;
             LOG_DEBUG("  added format %d for target %s (%zu %s)", format, XWindowsUtil::atomToString(m_display, target).c_str(), targetData.size(), targetData.size() == 1 ? "byte" : "bytes");
         } else {

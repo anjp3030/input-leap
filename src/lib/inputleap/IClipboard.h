@@ -57,6 +57,10 @@ public:
     \c kHTML is a text format encoded in UTF-8 and containing a valid
     HTML fragment (but not necessarily a complete HTML document).
     Newlines are LF.
+
+    \c kFiles is a list of files and directories together with their
+    contents, serialized with the format described in ClipboardFiles.h.
+    It is used to copy files between computers with copy & paste.
     */
     enum EFormat {
         kText,            //!< Text format, UTF-8, newline is LF
@@ -66,6 +70,7 @@ public:
         kJpeg,            //!< JPEG format
         kTiff,            //!< TIFF format
         kWebp,            //!< WEBP format
+        kFiles,           //!< Files and directories (see ClipboardFiles.h)
         kNumFormats        //!< The number of clipboard formats
     };
 
