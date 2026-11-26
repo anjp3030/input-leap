@@ -23,9 +23,13 @@
 #include "platform/MSWindowsClipboardBitmapConverter.h"
 #include "platform/MSWindowsClipboardHTMLConverter.h"
 #include "platform/MSWindowsClipboardFilesConverter.h"
+#include "platform/MSWindowsClipboardPNGConverter.h"
+#include "platform/MSWindowsClipboardImageUtils.h"
 #include "platform/MSWindowsClipboardFacade.h"
 #include "arch/win32/ArchMiscWindows.h"
 #include "base/Log.h"
+
+#include <cstring>
 
 namespace inputleap {
 
@@ -40,6 +44,7 @@ MSWindowsClipboard::MSWindowsClipboard(HWND window) :
     // add converters, most desired first
     m_converters.push_back(new MSWindowsClipboardUTF16Converter);
     m_converters.push_back(new MSWindowsClipboardBitmapConverter);
+    m_converters.push_back(new MSWindowsClipboardPNGConverter);
     m_converters.push_back(new MSWindowsClipboardHTMLConverter);
     m_converters.push_back(new MSWindowsClipboardFilesConverter);
 }
@@ -76,6 +81,7 @@ MSWindowsClipboard::emptyUnowned()
         return false;
     }
 
+    m_bitmapAdded = false;
     return true;
 }
 
@@ -112,6 +118,31 @@ MSWindowsClipboard::add(EFormat format, const std::string& data)
             if (win32Data != nullptr) {
                 UINT win32Format = converter->getWin32Format();
                 m_facade->write(win32Data, win32Format);
+                if (win32Format == CF_DIB) {
+                    m_bitmapAdded = true;
+                }
+            }
+        }
+    }
+
+    // Most Windows applications only paste CF_DIB images, but other
+    // computers often only provide PNG or JPEG.  Formats are added in
+    // ascending order, so a real bitmap (kBitmap) always comes first.
+    bool encodedImage = format == kPNG || format == kJpeg || format == kTiff ||
+                        format == kWebp;
+    if (encodedImage && !m_bitmapAdded) {
+        std::string dib = mswindows_image::decode_to_dib(data);
+        if (!dib.empty()) {
+            HGLOBAL handle = GlobalAlloc(GMEM_MOVEABLE | GMEM_DDESHARE, dib.size());
+            void* dst = handle != nullptr ? GlobalLock(handle) : nullptr;
+            if (dst != nullptr) {
+                memcpy(dst, dib.data(), dib.size());
+                GlobalUnlock(handle);
+                m_facade->write(handle, CF_DIB);
+                m_bitmapAdded = true;
+                LOG_DEBUG("added bitmap converted from image format %d", format);
+            } else if (handle != nullptr) {
+                GlobalFree(handle);
             }
         }
     }
@@ -160,6 +191,10 @@ MSWindowsClipboard::has(EFormat format) const
             }
         }
     }
+    // PNG can be generated from bitmaps (see get())
+    if (format == kPNG && IsClipboardFormatAvailable(CF_DIB)) {
+        return true;
+    }
     return false;
 }
 
@@ -184,6 +219,11 @@ std::string MSWindowsClipboard::get(EFormat format) const
 
     // get a handle to the clipboard data
     HANDLE win32Data = GetClipboardData(converter->getWin32Format());
+    if (win32Data == nullptr && format == kPNG) {
+        // most Windows applications (e.g. screenshots) only provide bitmaps,
+        // while applications on other platforms often only accept PNG
+        return getPNGFromBitmap();
+    }
     if (win32Data == nullptr) {
         // nb: can't cause this using integ tests; this is only caused when
         // the selected converter returns an invalid format -- which you
@@ -193,6 +233,22 @@ std::string MSWindowsClipboard::get(EFormat format) const
 
     // convert
     return converter->toIClipboard(win32Data);
+}
+
+std::string MSWindowsClipboard::getPNGFromBitmap() const
+{
+    HANDLE dib = GetClipboardData(CF_DIB);
+    if (dib == nullptr) {
+        return {};
+    }
+    const void* data = GlobalLock(dib);
+    if (data == nullptr) {
+        return {};
+    }
+    std::string png = mswindows_image::dib_to_png(data, GlobalSize(dib));
+    GlobalUnlock(dib);
+    LOG_DEBUG("converted clipboard bitmap to %zu bytes of PNG", png.size());
+    return png;
 }
 
 void

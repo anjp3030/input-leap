@@ -69,6 +69,7 @@ public:
 
 private:
     void clearConverters();
+    std::string getPNGFromBitmap() const;
 
     UINT convertFormatToWin32(EFormat) const;
     HANDLE convertTextToWin32(const std::string& data) const;
@@ -85,6 +86,8 @@ private:
     static UINT            s_ownershipFormat;
     IMSWindowsClipboardFacade* m_facade;
     bool m_deleteFacade;
+    // true if CF_DIB has been put on the clipboard since it was last emptied
+    bool m_bitmapAdded = false;
 };
 
 //! Clipboard format converter interface
